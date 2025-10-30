@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# API Keys & Secrets
+.env
+.env.local
+*.key
+.env.production
+
+# Data
+data/documents/*
+data/vectordb/*
+data/reports/*
+!data/documents/.gitkeep
+!data/vectordb/.gitkeep
+!data/reports/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+.Trash-*
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# FAISS indices
+*.index
+*.faiss

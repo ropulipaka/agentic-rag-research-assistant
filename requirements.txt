@@ -1,0 +1,26 @@
+# LLM & Agents
+langchain==0.1.0
+langchain-openai==0.0.5
+openai==1.12.0
+
+# Vector Store & Embeddings
+faiss-cpu==1.7.4
+numpy==1.26.3
+
+# Web Search & Scraping
+requests==2.31.0
+beautifulsoup4==4.12.3
+html2text==2020.1.16
+lxml==5.1.0
+
+# Data Processing
+pandas==2.2.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+tqdm==4.66.1
+
+# Development
+jupyter==1.0.0
+pytest==8.0.0
