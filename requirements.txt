@@ -40,4 +40,5 @@ pytest
 python-dotenv
 pyyaml
 requests
+tavily-python
 tqdm

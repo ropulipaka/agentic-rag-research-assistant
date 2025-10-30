@@ -92,7 +92,7 @@ class VectorStore:
         embeddings = self._generate_embeddings(texts)
 
         # Add to FAISS index
-        self.index.add(embeddings) #type:ignore
+        self.index.add(embeddings)
 
         # Store documents and metadata
         start_id = len(self.documents)
@@ -132,7 +132,7 @@ class VectorStore:
         query_embedding = self._generate_embeddings([query])
 
         # Search FAISS index
-        distances, indices = self.index.search(query_embedding, k) #type:ignore
+        distances, indices = self.index.search(query_embedding, k)
 
         # Convert distances to similarity scores
         similarities = 1 / (1 + distances[0])

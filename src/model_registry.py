@@ -308,8 +308,8 @@ def print_registry():
 
         print()
 
-
-if __name__ == "__main__":
+def test_model_registry():
+    """Test the Model Registry."""
     print_registry()
 
     print("="*80)
@@ -341,3 +341,7 @@ if __name__ == "__main__":
     print("Embeddings:")
     print(f"   💰 Cheapest: {get_embedding_model('cost_optimized')}")
     print(f"   🏆 Best quality: {get_embedding_model('quality_optimized')}")
+
+
+if __name__ == "__main__":
+    test_model_registry()

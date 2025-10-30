@@ -32,10 +32,6 @@ logger = logging.getLogger(__name__)
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
-# ============================================================================
-# Complexity Detection
-# ============================================================================
-
 def detect_complexity(
     task_type: str,
     messages: List[Dict],
@@ -171,7 +167,7 @@ Respond with ONLY ONE WORD: simple, medium, or complex"""
             max_tokens=10
         )
 
-        complexity = response.choices[0].message.content.strip().lower() #type:ignore
+        complexity = response.choices[0].message.content.strip().lower()
 
         if complexity in ["simple", "medium", "complex"]:
             logger.debug(f"LLM detected complexity: {complexity}")
@@ -184,10 +180,6 @@ Respond with ONLY ONE WORD: simple, medium, or complex"""
         logger.error(f"LLM complexity detection failed: {e}")
         return _detect_complexity_rule_based(task_type, messages)
 
-
-# ============================================================================
-# Model Selection
-# ============================================================================
 
 def select_model(
     task_type: str,
@@ -238,10 +230,6 @@ def select_model(
         quality_score = total_cost  # Higher cost = proxy for quality
         task_fit = 0
         complexity_fit = 0
-
-        # ============================================================
-        # TASK TYPE ALIGNMENT
-        # ============================================================
 
         if task_type == "fact_checking":
             # Fact-checking needs accuracy and reasoning
@@ -295,10 +283,6 @@ def select_model(
             if 1.0 <= total_cost <= 5.0:
                 task_fit += 2
 
-        # ============================================================
-        # COMPLEXITY ALIGNMENT
-        # ============================================================
-
         if complexity == "simple":
             # Simple tasks: prefer cheap, fast models
             if "simple_tasks" in strengths:
@@ -337,10 +321,6 @@ def select_model(
             if total_cost < 1.0:
                 complexity_fit -= 3
 
-        # ============================================================
-        # FEATURE BONUSES
-        # ============================================================
-
         feature_bonus = 0
 
         # Caching support is valuable for repeated queries
@@ -350,10 +330,6 @@ def select_model(
         # Multimodal support adds flexibility
         if "multimodal" in strengths:
             feature_bonus += 0.5
-
-        # ============================================================
-        # STRATEGY-BASED FINAL SCORING
-        # ============================================================
 
         if strategy == "cost_optimized":
             # Minimize cost while maintaining task fit
@@ -434,10 +410,6 @@ def select_model(
 
     return best_model
 
-
-# ============================================================================
-# API Calling
-# ============================================================================
 
 def call_openai(
     model: str,
@@ -538,10 +510,6 @@ def call_google(model: str, messages: List[Dict], **kwargs) -> Any:
     raise NotImplementedError("Google support coming soon")
 
 
-# ============================================================================
-# Main Routing Function
-# ============================================================================
-
 def route_request(
     task_type: str,
     messages: List[Dict],
@@ -595,10 +563,6 @@ def route_request(
         raise ValueError(f"Unknown provider: {provider_name}")
 
 
-# ============================================================================
-# Embedding Routing
-# ============================================================================
-
 def route_embedding_request(
     texts: List[str],
     strategy: str = ROUTING_STRATEGY
@@ -642,10 +606,6 @@ def route_embedding_request(
         logger.error(f"Embedding generation failed: {e}")
         raise
 
-
-# ============================================================================
-# Testing
-# ============================================================================
 
 def test_router():
     """Test the model router with sample requests."""
