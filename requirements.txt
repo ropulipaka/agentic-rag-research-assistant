@@ -38,5 +38,6 @@ pandas
 pydantic
 pytest
 python-dotenv
+pyyaml
 requests
 tqdm

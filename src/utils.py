@@ -3,6 +3,7 @@ Utility functions for web scraping and text processing.
 """
 
 import re
+import logging
 import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
@@ -10,6 +11,8 @@ from urllib.parse import urlparse
 import html2text
 
 from src.config import CHUNK_SIZE, CHUNK_OVERLAP
+
+logger = logging.getLogger(__name__)
 
 
 def scrape_url(url: str, timeout: int = 10) -> Optional[Dict[str, str]]:
@@ -27,8 +30,10 @@ def scrape_url(url: str, timeout: int = 10) -> Optional[Dict[str, str]]:
         # Validate URL
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
-            print(f"⚠️  Invalid URL: {url}")
+            logger.warning(f"Invalid URL: {url}")
             return None
+
+        logger.debug(f"Scraping URL: {url}")
 
         # Fetch page
         headers = {
@@ -57,6 +62,8 @@ def scrape_url(url: str, timeout: int = 10) -> Optional[Dict[str, str]]:
         # Clean content
         content = clean_text(content)
 
+        logger.info(f"Successfully scraped: {title_text} ({len(content)} chars)")
+
         return {
             'url': url,
             'title': title_text,
@@ -64,10 +71,10 @@ def scrape_url(url: str, timeout: int = 10) -> Optional[Dict[str, str]]:
         }
 
     except requests.RequestException as e:
-        print(f"⚠️  Failed to scrape {url}: {e}")
+        logger.error(f"Failed to scrape {url}: {e}")
         return None
     except Exception as e:
-        print(f"⚠️  Error processing {url}: {e}")
+        logger.error(f"Error processing {url}: {e}")
         return None
 
 
@@ -116,6 +123,8 @@ def chunk_text(
     if len(text) <= chunk_size:
         return [text]
 
+    logger.debug(f"Chunking text of length {len(text)} with chunk_size={chunk_size}, overlap={chunk_overlap}")
+
     chunks = []
     start = 0
 
@@ -134,7 +143,7 @@ def chunk_text(
             # Use the last sentence boundary found
             last_boundary = max(last_period, last_question, last_exclamation)
 
-            if last_boundary > chunk_size * 0.5:  # Only if boundary is not too early
+            if last_boundary > chunk_size * 0.5:
                 chunk = text[start:start + last_boundary + 1]
                 end = start + last_boundary + 1
 
@@ -143,6 +152,7 @@ def chunk_text(
         # Move start position with overlap
         start = end - chunk_overlap
 
+    logger.debug(f"Created {len(chunks)} chunks")
     return chunks
 
 
@@ -159,6 +169,7 @@ def scrape_urls(urls: List[str], max_workers: int = 3) -> List[Dict[str, str]]:
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    logger.info(f"Scraping {len(urls)} URLs with {max_workers} workers")
     documents = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -170,15 +181,15 @@ def scrape_urls(urls: List[str], max_workers: int = 3) -> List[Dict[str, str]]:
             result = future.result()
             if result:
                 documents.append(result)
-                print(f"✅ Scraped: {result['title']}")
 
+    logger.info(f"Successfully scraped {len(documents)}/{len(urls)} URLs")
     return documents
 
 
 def test_utils():
-    """
-    Test utility functions.
-    """
+    """Test utility functions."""
+    logger.info("Starting utility functions test")
+
     print("\n" + "="*50)
     print("Testing Utility Functions")
     print("="*50 + "\n")
@@ -192,15 +203,14 @@ def test_utils():
 
     # Test chunking
     print("\n2. Testing text chunking...")
-    long_text = "This is sentence one. " * 100  # ~2000 chars
+    long_text = "This is sentence one. " * 100
     chunks = chunk_text(long_text, chunk_size=500, chunk_overlap=50)
     print(f"   Text length: {len(long_text)} chars")
     print(f"   Number of chunks: {len(chunks)}")
     print(f"   First chunk: {chunks[0][:100]}...")
 
-    # Test web scraping (optional - requires internet)
+    # Test web scraping
     print("\n3. Testing web scraping...")
-    print("   Scraping example URL...")
     result = scrape_url("https://example.com")
     if result:
         print(f"   ✅ Title: {result['title']}")
@@ -210,6 +220,8 @@ def test_utils():
     print("\n" + "="*50)
     print("Test complete! ✅")
     print("="*50 + "\n")
+
+    logger.info("Utility functions test complete")
 
 
 if __name__ == "__main__":

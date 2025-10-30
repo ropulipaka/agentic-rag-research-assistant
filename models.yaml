@@ -1,0 +1,56 @@
+# Model Registry
+# Last updated: October 2025
+# Source: https://openai.com/pricing (Standard tier)
+
+models:
+  # GPT-5 Series - Text Generation
+  gpt-5:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 1.25
+    cost_per_1m_output: 10.00
+    max_tokens: 128000
+    speed_category: medium
+    strengths: [reasoning, accuracy, complex_tasks]
+    description: Latest GPT-5 model, best quality
+
+  gpt-5-mini:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 0.25
+    cost_per_1m_output: 2.00
+    max_tokens: 128000
+    speed_category: fast
+    strengths: [balanced, speed, cost]
+    description: Balanced GPT-5 variant
+
+  gpt-5-nano:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 0.05
+    cost_per_1m_output: 0.40
+    max_tokens: 128000
+    speed_category: fast
+    strengths: [cost, speed, simple_tasks]
+    description: Most affordable GPT-5 option
+
+  # Embedding Models
+  text-embedding-3-small:
+    provider: openai
+    model_type: embedding
+    cost_per_1m_tokens: 0.02
+    embedding_dim: 1536
+    max_tokens: 8191
+    speed_category: fast
+    strengths: [cost, speed]
+    description: Standard embedding model
+
+  text-embedding-3-large:
+    provider: openai
+    model_type: embedding
+    cost_per_1m_tokens: 0.13
+    embedding_dim: 3072
+    max_tokens: 8191
+    speed_category: medium
+    strengths: [accuracy, quality]
+    description: High quality embeddings
