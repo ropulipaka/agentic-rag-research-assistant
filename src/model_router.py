@@ -22,7 +22,8 @@ from src.model_registry import (
     get_fastest_model,
     get_best_quality_model,
     get_embedding_model,
-    get_model_info
+    get_model_info,
+    list_available_models
 )
 
 logger = logging.getLogger(__name__)
@@ -195,10 +196,11 @@ def select_model(
     provider: Optional[str] = None
 ) -> str:
     """
-    Select the best model based on task, complexity, and strategy.
+    Intelligently select the best model based on task, complexity, and strategy.
+    Uses a scoring system that balances cost, quality, speed, and task fit.
 
     Args:
-        task_type: Type of task
+        task_type: Type of task (query_analysis, synthesis, fact_checking, etc.)
         complexity: Complexity level (simple, medium, complex)
         strategy: Routing strategy (cost_optimized, quality_optimized, balanced, latency_optimized)
         provider: Optional provider preference
@@ -208,48 +210,229 @@ def select_model(
     """
     logger.debug(f"Selecting model - Task: {task_type}, Complexity: {complexity}, Strategy: {strategy}")
 
-    # Strategy-based selection
-    if strategy == "cost_optimized":
-        # Always use cheapest unless complex task requires quality
-        if complexity == "complex" and task_type in ["synthesis", "fact_checking"]:
-            model = get_best_quality_model(provider=provider)
-        else:
-            model = get_cheapest_model(provider=provider)
+    # Get available text generation and reasoning models
+    available = list_available_models(provider=provider)
+    available = [
+        m for m in available 
+        if MODEL_REGISTRY[m].get("model_type") in ["text_generation", "reasoning"]
+    ]
 
-    elif strategy == "quality_optimized":
-        # Always use best quality
-        model = get_best_quality_model(provider=provider)
+    if not available:
+        raise ValueError(f"No available models for provider: {provider}")
 
-    elif strategy == "latency_optimized":
-        # Always use fastest
-        model = get_fastest_model(provider=provider)
+    # Score each model
+    scored_models = []
 
-    elif strategy == "balanced":
-        # Smart routing based on task and complexity
+    for model_name in available:
+        model_info = MODEL_REGISTRY[model_name]
+
+        # Base metrics
+        total_cost = model_info["cost_per_1m_input"] + model_info["cost_per_1m_output"]
+        speed_map = {"fast": 3, "medium": 2, "slow": 1}
+        speed_score = speed_map.get(model_info["speed_category"], 2)
+        strengths = model_info.get("strengths", [])
+        model_type = model_info.get("model_type", "text_generation")
+
+        # Initialize scores
+        cost_efficiency = 1 / (total_cost + 0.01)  # Lower cost = higher score
+        quality_score = total_cost  # Higher cost = proxy for quality
+        task_fit = 0
+        complexity_fit = 0
+
+        # ============================================================
+        # TASK TYPE ALIGNMENT
+        # ============================================================
+
+        if task_type == "fact_checking":
+            # Fact-checking needs accuracy and reasoning
+            if "reasoning" in strengths or model_type == "reasoning":
+                task_fit += 5  # Strong preference for reasoning models
+            if "accuracy" in strengths or "fact_checking" in strengths:
+                task_fit += 3
+            # Penalize cheap models for fact-checking
+            if total_cost < 1.0:
+                task_fit -= 2
+
+        elif task_type == "synthesis":
+            # Synthesis needs quality and reasoning
+            if "reasoning" in strengths or "complex_tasks" in strengths:
+                task_fit += 4
+            if "accuracy" in strengths:
+                task_fit += 2
+            # Prefer mid-to-high quality models
+            if total_cost > 5.0:
+                task_fit += 2
+            elif total_cost < 1.0:
+                task_fit -= 1
+
+        elif task_type == "query_analysis":
+            # Query analysis needs speed and balance
+            if "speed" in strengths or "balanced" in strengths:
+                task_fit += 3
+            if speed_score >= 2:
+                task_fit += 2
+            # Prefer fast, cheap models
+            if total_cost < 2.0 and speed_score == 3:
+                task_fit += 2
+
+        elif task_type == "web_search":
+            # Web search needs speed
+            if "speed" in strengths:
+                task_fit += 3
+            if speed_score == 3:
+                task_fit += 2
+            # Cheap and fast is ideal
+            if total_cost < 1.0:
+                task_fit += 2
+
+        elif task_type == "document_processing":
+            # Document processing needs balance
+            if "balanced" in strengths:
+                task_fit += 3
+            if speed_score >= 2:
+                task_fit += 1
+            # Mid-tier models ideal
+            if 1.0 <= total_cost <= 5.0:
+                task_fit += 2
+
+        # ============================================================
+        # COMPLEXITY ALIGNMENT
+        # ============================================================
+
         if complexity == "simple":
-            model = get_cheapest_model(provider=provider)
+            # Simple tasks: prefer cheap, fast models
+            if "simple_tasks" in strengths:
+                complexity_fit += 4
+            if total_cost < 1.0:
+                complexity_fit += 3
+            if speed_score == 3:
+                complexity_fit += 2
+            # Penalize expensive models for simple tasks
+            if total_cost > 5.0:
+                complexity_fit -= 3
+
+        elif complexity == "medium":
+            # Medium tasks: balanced models
+            if "balanced" in strengths:
+                complexity_fit += 4
+            # Mid-tier cost is ideal
+            if 1.0 <= total_cost <= 5.0:
+                complexity_fit += 3
+            if speed_score >= 2:
+                complexity_fit += 1
+            # Avoid extremes
+            if total_cost < 0.5 or total_cost > 10.0:
+                complexity_fit -= 2
+
         elif complexity == "complex":
-            model = get_best_quality_model(provider=provider)
-        else:  # medium
-            # Use mid-tier model (gpt-5-mini)
-            available = [m for m in MODEL_REGISTRY.keys() 
-                        if MODEL_REGISTRY[m].get("enabled", True)
-                        and MODEL_REGISTRY[m].get("model_type") == "text_generation"]
-            if provider:
-                available = [m for m in available if MODEL_REGISTRY[m]["provider"] == provider]
+            # Complex tasks: quality matters
+            if "reasoning" in strengths or "complex_tasks" in strengths:
+                complexity_fit += 5
+            if "accuracy" in strengths:
+                complexity_fit += 3
+            # Prefer higher-quality models
+            if total_cost > 5.0:
+                complexity_fit += 2
+            # Don't use cheap models for complex tasks
+            if total_cost < 1.0:
+                complexity_fit -= 3
 
-            # Try to find gpt-5-mini or equivalent
-            if "gpt-5-mini" in available:
-                model = "gpt-5-mini"
-            else:
-                model = get_cheapest_model(provider=provider)
+        # ============================================================
+        # FEATURE BONUSES
+        # ============================================================
 
-    else:
-        logger.warning(f"Unknown strategy: {strategy}, using balanced")
-        model = get_cheapest_model(provider=provider)
+        feature_bonus = 0
 
-    logger.info(f"Selected model: {model} (task={task_type}, complexity={complexity}, strategy={strategy})")
-    return model
+        # Caching support is valuable for repeated queries
+        if "caching" in strengths:
+            feature_bonus += 1
+
+        # Multimodal support adds flexibility
+        if "multimodal" in strengths:
+            feature_bonus += 0.5
+
+        # ============================================================
+        # STRATEGY-BASED FINAL SCORING
+        # ============================================================
+
+        if strategy == "cost_optimized":
+            # Minimize cost while maintaining task fit
+            final_score = (
+                (cost_efficiency * 10) +  # Cost is king
+                (task_fit * 2) +          # But task fit matters
+                (complexity_fit * 2) +    # And complexity fit
+                feature_bonus
+            )
+
+        elif strategy == "quality_optimized":
+            # Maximize quality regardless of cost
+            final_score = (
+                (quality_score * 2) +     # Quality first
+                (task_fit * 3) +          # Strong task alignment
+                (complexity_fit * 3) +    # Strong complexity alignment
+                (feature_bonus * 2)
+            )
+
+        elif strategy == "latency_optimized":
+            # Minimize latency while maintaining quality
+            final_score = (
+                (speed_score * 10) +      # Speed is critical
+                (task_fit * 2) +          # Task fit matters
+                (complexity_fit * 1) +    # Complexity fit less important
+                feature_bonus
+            )
+
+        elif strategy == "balanced":
+            # Balance all factors intelligently
+            final_score = (
+                (cost_efficiency * 3) +   # Cost matters
+                (quality_score * 0.5) +   # Quality matters some
+                (speed_score * 2) +       # Speed matters
+                (task_fit * 4) +          # Task fit very important
+                (complexity_fit * 4) +    # Complexity fit very important
+                (feature_bonus * 2)
+            )
+
+        else:
+            # Default to balanced
+            final_score = (
+                (cost_efficiency * 3) +
+                (quality_score * 0.5) +
+                (speed_score * 2) +
+                (task_fit * 4) +
+                (complexity_fit * 4) +
+                (feature_bonus * 2)
+            )
+
+        scored_models.append({
+            "model": model_name,
+            "score": final_score,
+            "cost": total_cost,
+            "speed": model_info["speed_category"],
+            "task_fit": task_fit,
+            "complexity_fit": complexity_fit
+        })
+
+    # Sort by score (highest first)
+    scored_models.sort(key=lambda x: x["score"], reverse=True)
+
+    # Get best model
+    best_model = scored_models[0]["model"]
+
+    logger.info(f"Selected model: {best_model} (task={task_type}, complexity={complexity}, strategy={strategy})")
+    
+    # Log top 3 candidates
+    top_3 = scored_models[:3]
+    for i, m in enumerate(top_3, 1):
+        logger.debug(
+            f"  Candidate #{i}: {m['model']} - "
+            f"score={round(m['score'], 2)}, "
+            f"task_fit={m['task_fit']}, "
+            f"complexity_fit={m['complexity_fit']}, "
+            f"cost=${m['cost']:.2f}"
+        )
+
+    return best_model
 
 
 # ============================================================================
@@ -260,7 +443,7 @@ def call_openai(
     model: str,
     messages: List[Dict],
     temperature: float = LLM_TEMPERATURE,
-    max_tokens: int = MAX_TOKENS,
+    max_completion_tokens: int = MAX_TOKENS,
     **kwargs
 ) -> Any:
     """
@@ -270,7 +453,7 @@ def call_openai(
         model: Model name
         messages: Message list
         temperature: Temperature setting
-        max_tokens: Max tokens to generate
+        max_completion_tokens: Max tokens to generate
         **kwargs: Additional parameters
 
     Returns:
@@ -282,13 +465,20 @@ def call_openai(
     logger.debug(f"Calling OpenAI model: {model}")
 
     try:
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=messages, #type:ignore
-            temperature=temperature,
-            max_tokens=max_tokens,
+        # GPT-5 models don't support custom temperature
+        # They only support temperature=1 (default)
+        params = {
+            "model": model,
+            "messages": messages,
+            "max_completion_tokens": max_completion_tokens,
             **kwargs
-        ) #type:ignore
+        }
+
+        # Only add temperature if NOT a GPT-5 model
+        if not model.startswith("gpt-5"):
+            params["temperature"] = temperature
+
+        response = openai_client.chat.completions.create(**params)
 
         # Log token usage and cost
         usage = response.usage

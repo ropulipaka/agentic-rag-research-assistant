@@ -90,19 +90,29 @@ def list_available_models(
 
 def get_cheapest_model(
     provider: Optional[str] = None,
-    model_type: str = "text_generation"
+    model_type: Optional[str] = None  # ← Change to Optional, default None
 ) -> str:
     """
     Get the cheapest available model.
 
     Args:
         provider: Optional provider filter
-        model_type: Type of model (text_generation or embedding)
+        model_type: Optional type filter (text_generation, reasoning, embedding)
+                   If None, considers all generative models
 
     Returns:
         Model name
     """
-    available = list_available_models(provider, model_type)
+    # If no model_type specified, get all generative models (text_generation + reasoning)
+    if model_type is None:
+        available = list_available_models(provider=provider)
+        # Filter to only generative models (exclude embeddings)
+        available = [
+            m for m in available 
+            if MODEL_REGISTRY[m].get("model_type") in ["text_generation", "reasoning"]
+        ]
+    else:
+        available = list_available_models(provider=provider, model_type=model_type)
 
     if not available:
         raise ValueError(f"No available models for provider={provider}, type={model_type}")
@@ -111,7 +121,7 @@ def get_cheapest_model(
         # For embeddings, just compare single cost
         cheapest = min(available, key=lambda m: MODEL_REGISTRY[m]["cost_per_1m_tokens"])
     else:
-        # For text generation, sum input + output
+        # For text generation/reasoning, sum input + output
         cheapest = min(
             available,
             key=lambda m: (
@@ -120,25 +130,33 @@ def get_cheapest_model(
             )
         )
 
-    logger.debug(f"Cheapest {model_type} model: {cheapest}")
+    logger.debug(f"Cheapest {model_type or 'generative'} model: {cheapest}")
     return cheapest
 
 
 def get_fastest_model(
     provider: Optional[str] = None,
-    model_type: str = "text_generation"
+    model_type: Optional[str] = None
 ) -> str:
     """
-    Get the fastest available model.
+    Get the fastest available model (cheapest among fast models).
 
     Args:
         provider: Optional provider filter
-        model_type: Type of model
+        model_type: Optional type filter
 
     Returns:
         Model name
     """
-    available = list_available_models(provider, model_type)
+    # If no model_type specified, get all generative models
+    if model_type is None:
+        available = list_available_models(provider=provider)
+        available = [
+            m for m in available 
+            if MODEL_REGISTRY[m].get("model_type") in ["text_generation", "reasoning"]
+        ]
+    else:
+        available = list_available_models(provider=provider, model_type=model_type)
 
     if not available:
         raise ValueError(f"No available models for provider={provider}, type={model_type}")
@@ -150,26 +168,48 @@ def get_fastest_model(
         # Fallback to medium
         fast = [m for m in available if MODEL_REGISTRY[m]["speed_category"] == "medium"]
 
-    result = fast[0] if fast else available[0]
-    logger.debug(f"Fastest {model_type} model: {result}")
+    if not fast:
+        fast = available
+
+    # Among fast models, pick the cheapest
+    if model_type == "embedding":
+        result = min(fast, key=lambda m: MODEL_REGISTRY[m]["cost_per_1m_tokens"])
+    else:
+        result = min(
+            fast,
+            key=lambda m: (
+                MODEL_REGISTRY[m]["cost_per_1m_input"] + 
+                MODEL_REGISTRY[m]["cost_per_1m_output"]
+            )
+        )
+
+    logger.debug(f"Fastest {model_type or 'generative'} model: {result}")
     return result
 
 
 def get_best_quality_model(
     provider: Optional[str] = None,
-    model_type: str = "text_generation"
+    model_type: Optional[str] = None  # ← Change to Optional
 ) -> str:
     """
     Get the highest quality model (based on cost as proxy).
 
     Args:
         provider: Optional provider filter
-        model_type: Type of model
+        model_type: Optional type filter
 
     Returns:
         Model name
     """
-    available = list_available_models(provider, model_type)
+    # If no model_type specified, get all generative models
+    if model_type is None:
+        available = list_available_models(provider=provider)
+        available = [
+            m for m in available 
+            if MODEL_REGISTRY[m].get("model_type") in ["text_generation", "reasoning"]
+        ]
+    else:
+        available = list_available_models(provider=provider, model_type=model_type)
 
     if not available:
         raise ValueError(f"No available models for provider={provider}, type={model_type}")
@@ -178,7 +218,7 @@ def get_best_quality_model(
         # For embeddings, higher cost = better quality
         best = max(available, key=lambda m: MODEL_REGISTRY[m]["cost_per_1m_tokens"])
     else:
-        # For text generation, sum input + output
+        # For text generation/reasoning, sum input + output
         best = max(
             available,
             key=lambda m: (
@@ -187,7 +227,7 @@ def get_best_quality_model(
             )
         )
 
-    logger.debug(f"Best quality {model_type} model: {best}")
+    logger.debug(f"Best quality {model_type or 'generative'} model: {best}")
     return best
 
 
@@ -220,16 +260,25 @@ def print_registry():
     for name, info in MODEL_REGISTRY.items():
         provider = info["provider"]
         if provider not in providers:
-            providers[provider] = {"text_generation": [], "embedding": []}
+            providers[provider] = {
+                "text_generation": [],
+                "reasoning": [],
+                "embedding": []
+            }
 
         model_type = info.get("model_type", "text_generation")
+
+        # Ensure the model_type key exists
+        if model_type not in providers[provider]:
+            providers[provider][model_type] = []
+
         providers[provider][model_type].append((name, info))
 
     for provider, types in providers.items():
         print(f"🔹 {provider.upper()}")
 
         # Text generation models
-        if types["text_generation"]:
+        if types.get("text_generation"):
             print("   Text Generation:")
             for name, info in types["text_generation"]:
                 enabled = "✅" if info.get("enabled", True) else "❌"
@@ -238,8 +287,18 @@ def print_registry():
                 print(f"         ${cost:.2f}/1M tokens | {info['speed_category']} | {info['max_tokens']:,} ctx")
                 print(f"         {info['description']}")
 
+        # Reasoning models
+        if types.get("reasoning"):
+            print("   Reasoning:")
+            for name, info in types["reasoning"]:
+                enabled = "✅" if info.get("enabled", True) else "❌"
+                cost = info["cost_per_1m_input"] + info["cost_per_1m_output"]
+                print(f"      {enabled} {name}")
+                print(f"         ${cost:.2f}/1M tokens | {info['speed_category']} | {info['max_tokens']:,} ctx")
+                print(f"         {info['description']}")
+
         # Embedding models
-        if types["embedding"]:
+        if types.get("embedding"):
             print("   Embeddings:")
             for name, info in types["embedding"]:
                 enabled = "✅" if info.get("enabled", True) else "❌"
@@ -258,19 +317,26 @@ if __name__ == "__main__":
     print("="*80 + "\n")
 
     text_models = list_available_models(model_type="text_generation")
+    reasoning_models = list_available_models(model_type="reasoning")
     embedding_models = list_available_models(model_type="embedding")
 
     print(f"Text Generation ({len(text_models)}): {', '.join(text_models)}")
+    print(f"Reasoning ({len(reasoning_models)}): {', '.join(reasoning_models)}")
     print(f"Embeddings ({len(embedding_models)}): {', '.join(embedding_models)}\n")
 
     print("="*80)
     print("MODEL SELECTION")
     print("="*80 + "\n")
 
-    print("Text Generation:")
+    print("All Generative Models:")
     print(f"   💰 Cheapest: {get_cheapest_model()}")
     print(f"   ⚡ Fastest: {get_fastest_model()}")
     print(f"   🏆 Best quality: {get_best_quality_model()}\n")
+
+    print("Text Generation Only:")
+    print(f"   💰 Cheapest: {get_cheapest_model(model_type='text_generation')}")
+    print(f"   ⚡ Fastest: {get_fastest_model(model_type='text_generation')}")
+    print(f"   🏆 Best quality: {get_best_quality_model(model_type='text_generation')}\n")
 
     print("Embeddings:")
     print(f"   💰 Cheapest: {get_embedding_model('cost_optimized')}")

@@ -3,37 +3,131 @@
 # Source: https://openai.com/pricing (Standard tier)
 
 models:
-  # GPT-5 Series - Text Generation
+  # GPT-5 Series - Latest generation
   gpt-5:
     provider: openai
     model_type: text_generation
     cost_per_1m_input: 1.25
     cost_per_1m_output: 10.00
+    cost_per_1m_cached_input: 0.125
     max_tokens: 128000
     speed_category: medium
     strengths: [reasoning, accuracy, complex_tasks]
     description: Latest GPT-5 model, best quality
-
+  
   gpt-5-mini:
     provider: openai
     model_type: text_generation
     cost_per_1m_input: 0.25
     cost_per_1m_output: 2.00
+    cost_per_1m_cached_input: 0.025
     max_tokens: 128000
     speed_category: fast
-    strengths: [balanced, speed, cost]
+    strengths: [balanced, speed]
     description: Balanced GPT-5 variant
-
+  
   gpt-5-nano:
     provider: openai
     model_type: text_generation
     cost_per_1m_input: 0.05
     cost_per_1m_output: 0.40
+    cost_per_1m_cached_input: 0.005
     max_tokens: 128000
     speed_category: fast
     strengths: [cost, speed, simple_tasks]
     description: Most affordable GPT-5 option
-
+  
+  # GPT-4.1 Series - High quality with caching
+  gpt-4.1:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 2.00
+    cost_per_1m_output: 8.00
+    cost_per_1m_cached_input: 0.50
+    max_tokens: 128000
+    speed_category: medium
+    strengths: [reasoning, accuracy, complex_tasks, caching]
+    description: High quality with prompt caching support
+  
+  gpt-4.1-mini:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 0.40
+    cost_per_1m_output: 1.60
+    cost_per_1m_cached_input: 0.10
+    max_tokens: 128000
+    speed_category: fast
+    strengths: [balanced, speed, caching]
+    description: Balanced 4.1 variant with caching
+  
+  gpt-4.1-nano:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 0.10
+    cost_per_1m_output: 0.40
+    cost_per_1m_cached_input: 0.025
+    max_tokens: 128000
+    speed_category: fast
+    strengths: [cost, speed, simple_tasks]
+    description: Most affordable 4.1 option
+  
+  # GPT-4o Series - Fast and multimodal
+  gpt-4o:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 2.50
+    cost_per_1m_output: 10.00
+    cost_per_1m_cached_input: 1.25
+    max_tokens: 128000
+    speed_category: medium
+    strengths: [multimodal, accuracy, speed]
+    description: Multimodal model with vision support
+  
+  gpt-4o-mini:
+    provider: openai
+    model_type: text_generation
+    cost_per_1m_input: 0.15
+    cost_per_1m_output: 0.60
+    cost_per_1m_cached_input: 0.075
+    max_tokens: 128000
+    speed_category: fast
+    strengths: [speed, cost, multimodal, balanced]
+    description: Fast and affordable with multimodal support
+  
+  # Reasoning Models - For complex logic and analysis
+  o4-mini:
+    provider: openai
+    model_type: reasoning
+    cost_per_1m_input: 1.10
+    cost_per_1m_output: 4.40
+    cost_per_1m_cached_input: 0.275
+    max_tokens: 65536
+    speed_category: slow
+    strengths: [reasoning, math, logic, fact_checking, accuracy]
+    description: Reasoning model for complex analytical tasks
+  
+  o3-mini:
+    provider: openai
+    model_type: reasoning
+    cost_per_1m_input: 1.10
+    cost_per_1m_output: 4.40
+    cost_per_1m_cached_input: 0.55
+    max_tokens: 65536
+    speed_category: slow
+    strengths: [reasoning, math, logic]
+    description: Alternative reasoning model
+  
+  o3:
+    provider: openai
+    model_type: reasoning
+    cost_per_1m_input: 2.00
+    cost_per_1m_output: 8.00
+    cost_per_1m_cached_input: 0.50
+    max_tokens: 100000
+    speed_category: slow
+    strengths: [reasoning, math, complex_tasks]
+    description: Advanced reasoning model
+  
   # Embedding Models
   text-embedding-3-small:
     provider: openai
@@ -44,7 +138,7 @@ models:
     speed_category: fast
     strengths: [cost, speed]
     description: Standard embedding model
-
+  
   text-embedding-3-large:
     provider: openai
     model_type: embedding

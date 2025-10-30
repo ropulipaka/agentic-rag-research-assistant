@@ -2,18 +2,20 @@
 Agent modules for the research assistant.
 """
 
-from .query_analyzer import QueryAnalyzer
-from .web_searcher import WebSearcher
-from .document_processor import DocumentProcessor
-from .retrieval_agent import RetrievalAgent
-from .synthesis_agent import SynthesisAgent
-from .fact_checker import FactChecker
+from .query_analyzer import QueryAnalyzerAgent
+
+# Will be added as we build them:
+# from .web_searcher import WebSearcherAgent
+# from .document_processor import DocumentProcessorAgent
+# from .retrieval_agent import RetrievalAgent
+# from .synthesis_agent import SynthesisAgent
+# from .fact_checker import FactCheckerAgent
 
 __all__ = [
-    "QueryAnalyzer",
-    "WebSearcher",
-    "DocumentProcessor",
-    "RetrievalAgent",
-    "SynthesisAgent",
-    "FactChecker",
+    "QueryAnalyzerAgent",
+    # "WebSearcherAgent",
+    # "DocumentProcessorAgent",
+    # "RetrievalAgent",
+    # "SynthesisAgent",
+    # "FactCheckerAgent",
 ]
