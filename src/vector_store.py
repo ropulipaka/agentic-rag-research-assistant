@@ -35,6 +35,9 @@ class VectorStore:
         self.embedding_dim = EMBEDDING_DIM
         self.client = OpenAI(api_key=OPENAI_API_KEY)
 
+        # FAISS index (HNSW for fast approximate search)
+        self.index = None
+
         # Metadata storage (FAISS only stores vectors, not text)
         self.documents = []  # List of document texts
         self.metadata = []   # List of metadata dicts
@@ -61,7 +64,7 @@ class VectorStore:
         - efConstruction=64: Quality of index construction
         """
         # Create HNSW index
-        self.index: faiss.IndexHNSWFlat = faiss.IndexHNSWFlat(self.embedding_dim, 32)
+        self.index = faiss.IndexHNSWFlat(self.embedding_dim, 32)
 
         # Set construction parameter
         self.index.hnsw.efConstruction = 64
@@ -114,7 +117,7 @@ class VectorStore:
         embeddings = self._generate_embeddings(texts)
 
         # Add to FAISS index
-        self.index.add(x=embeddings)
+        self.index.add(embeddings)
 
         # Store documents and metadata
         start_id = len(self.documents)
@@ -156,7 +159,7 @@ class VectorStore:
         query_embedding = self._generate_embeddings([query])
 
         # Search FAISS index
-        distances, indices = self.index.search(x=query_embedding, k=k)
+        distances, indices = self.index.search(query_embedding, k)
 
         # Convert distances to similarity scores
         similarities = 1 / (1 + distances[0])
