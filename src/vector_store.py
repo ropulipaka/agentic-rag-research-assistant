@@ -6,17 +6,13 @@ Handles document embedding, storage, and retrieval using FAISS.
 import os
 import pickle
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, cast
 import numpy as np
 import faiss
 from openai import OpenAI
 
-from src.config import (
-    OPENAI_API_KEY,
-    EMBEDDING_MODEL,
-    EMBEDDING_DIM,
-    VECTORDB_DIR
-)
+from src.config import (OPENAI_API_KEY, EMBEDDING_MODEL, EMBEDDING_DIM,
+                        VECTORDB_DIR)
 
 
 class VectorStore:
@@ -33,14 +29,17 @@ class VectorStore:
         """
         self.index_name = index_name
         self.embedding_dim = EMBEDDING_DIM
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+        self.client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            http_client=None  # Disable proxy
+        )
 
         # FAISS index (HNSW for fast approximate search)
-        self.index = None
+        self.index: Optional[faiss.Index] = None
 
         # Metadata storage (FAISS only stores vectors, not text)
         self.documents = []  # List of document texts
-        self.metadata = []   # List of metadata dicts
+        self.metadata = []  # List of metadata dicts
 
         # Paths
         self.index_path = VECTORDB_DIR / f"{index_name}.faiss"
@@ -83,10 +82,8 @@ class VectorStore:
             numpy array of shape (len(texts), embedding_dim)
         """
         # Batch embedding for efficiency
-        response = self.client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=texts
-        )
+        response = self.client.embeddings.create(model=EMBEDDING_MODEL,
+                                                 input=texts)
 
         # Extract embeddings
         embeddings = [item.embedding for item in response.data]
@@ -94,11 +91,9 @@ class VectorStore:
         # Convert to numpy array
         return np.array(embeddings, dtype=np.float32)
 
-    def add_documents(
-        self,
-        texts: List[str],
-        metadatas: Optional[List[Dict]] = None
-    ) -> List[int]:
+    def add_documents(self,
+                      texts: List[str],
+                      metadatas: Optional[List[Dict]] = None) -> List[int]:
         """
         Add documents to the vector store.
 
@@ -117,7 +112,7 @@ class VectorStore:
         embeddings = self._generate_embeddings(texts)
 
         # Add to FAISS index
-        self.index.add(embeddings)
+        self.index.add(embeddings)  # type: ignore
 
         # Store documents and metadata
         start_id = len(self.documents)
@@ -130,16 +125,16 @@ class VectorStore:
         # Return document IDs
         doc_ids = list(range(start_id, start_id + len(texts)))
 
-        print(f"✅ Added {len(texts)} documents (IDs: {start_id}-{start_id + len(texts) - 1})")
+        print(
+            f"✅ Added {len(texts)} documents (IDs: {start_id}-{start_id + len(texts) - 1})"
+        )
 
         return doc_ids
 
-    def search(
-        self,
-        query: str,
-        k: int = 5,
-        return_scores: bool = True
-    ) -> List[Dict]:
+    def search(self,
+               query: str,
+               k: int = 5,
+               return_scores: bool = True) -> List[Dict]:
         """
         Search for similar documents.
 
@@ -159,7 +154,8 @@ class VectorStore:
         query_embedding = self._generate_embeddings([query])
 
         # Search FAISS index
-        distances, indices = self.index.search(query_embedding, k)
+        distances, indices = self.index.search(query_embedding,
+                                               k)  # type: ignore
 
         # Convert distances to similarity scores
         similarities = 1 / (1 + distances[0])
@@ -191,10 +187,11 @@ class VectorStore:
 
         # Save metadata and documents
         with open(self.metadata_path, 'wb') as f:
-            pickle.dump({
-                'documents': self.documents,
-                'metadata': self.metadata
-            }, f)
+            pickle.dump(
+                {
+                    'documents': self.documents,
+                    'metadata': self.metadata
+                }, f)
 
         print(f"✅ Saved index to {self.index_path}")
         print(f"   Documents: {len(self.documents)}")
@@ -237,12 +234,19 @@ class VectorStore:
             Dict with stats
         """
         return {
-            'index_name': self.index_name,
-            'num_documents': len(self.documents),
-            'embedding_dim': self.embedding_dim,
-            'index_size_mb': self.index.ntotal * self.embedding_dim * 4 / (1024 * 1024) if self.index else 0,
-            'has_index': self.index is not None,
-            'index_path': str(self.index_path)
+            'index_name':
+            self.index_name,
+            'num_documents':
+            len(self.documents),
+            'embedding_dim':
+            self.embedding_dim,
+            'index_size_mb':
+            self.index.ntotal * self.embedding_dim * 4 /
+            (1024 * 1024) if self.index else 0,
+            'has_index':
+            self.index is not None,
+            'index_path':
+            str(self.index_path)
         }
 
 
@@ -251,9 +255,9 @@ def test_vector_store():
     """
     Test the vector store with sample documents.
     """
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Testing FAISS Vector Store")
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
 
     # Create vector store
     vs = VectorStore(index_name="test")
@@ -292,9 +296,9 @@ def test_vector_store():
     for key, value in stats.items():
         print(f"   {key}: {value}")
 
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Test complete! ✅")
-    print("="*50 + "\n")
+    print("=" * 50 + "\n")
 
 
 if __name__ == "__main__":
