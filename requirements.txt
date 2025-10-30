@@ -24,3 +24,19 @@ tqdm==4.66.1
 # Development
 jupyter==1.0.0
 pytest==8.0.0
+openai
+beautifulsoup4
+faiss-cpu
+html2text
+jupyter
+langchain
+langchain-openai
+lxml
+numpy
+openai
+pandas
+pydantic
+pytest
+python-dotenv
+requests
+tqdm
