@@ -36,7 +36,8 @@ class QueryAnalyzerAgent:
         logger.info(f"Analyzing query: {query}")
 
         # Build prompt for query analysis
-        system_prompt = """You are a research assistant that breaks down complex questions into smaller, focused sub-questions.
+        system_prompt = """
+            You are a research assistant that breaks down complex questions into smaller, focused sub-questions.
             
             Your task:
             1. Analyze the user's question
