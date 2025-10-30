@@ -154,8 +154,7 @@ class VectorStore:
         query_embedding = self._generate_embeddings([query])
 
         # Search FAISS index
-        distances, indices = self.index.search(query_embedding,
-                                               k)  # type: ignore
+        distances, indices = self.index.search(query_embedding, k)  # type: ignore
 
         # Convert distances to similarity scores
         similarities = 1 / (1 + distances[0])
@@ -234,19 +233,12 @@ class VectorStore:
             Dict with stats
         """
         return {
-            'index_name':
-            self.index_name,
-            'num_documents':
-            len(self.documents),
-            'embedding_dim':
-            self.embedding_dim,
-            'index_size_mb':
-            self.index.ntotal * self.embedding_dim * 4 /
-            (1024 * 1024) if self.index else 0,
-            'has_index':
-            self.index is not None,
-            'index_path':
-            str(self.index_path)
+            'index_name': self.index_name,
+            'num_documents': len(self.documents),
+            'embedding_dim': self.embedding_dim,
+            'index_size_mb': self.index.ntotal * self.embedding_dim * 4 / (1024 * 1024) if self.index else 0,
+            'has_index': self.index is not None,
+            'index_path': str(self.index_path)
         }
 
 
