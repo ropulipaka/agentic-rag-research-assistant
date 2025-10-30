@@ -1,36 +1,49 @@
 """
 FAISS Vector Store Wrapper
 Handles document embedding, storage, and retrieval using FAISS.
+Shared resource that can be accessed by multiple agents.
 """
 
 import os
 import pickle
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, cast
+from typing import List, Dict, Optional, Tuple
 import numpy as np
 import faiss
-from openai import OpenAI
 
-from src.config import OPENAI_API_KEY, EMBEDDING_DIM, VECTORDB_DIR
+from src.config import EMBEDDING_DIM, VECTORDB_DIR
 from src.model_router import route_embedding_request
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
-    """FAISS-based vector store for semantic search."""
+    """FAISS-based vector store for semantic search with HNSW indexing."""
 
-    def __init__(self, index_name: str = "main"):
+    def __init__(
+        self,
+        index_name: str = "main",
+        hnsw_m: int = 32,
+        hnsw_ef_construction: int = 64,
+        hnsw_ef_search: int = 32
+    ):
         """
         Initialize vector store.
 
         Args:
             index_name: Name for the FAISS index (for multiple indices)
+            hnsw_m: Number of connections per layer in HNSW graph
+            hnsw_ef_construction: Size of dynamic candidate list during construction
+            hnsw_ef_search: Size of dynamic candidate list during search
         """
         self.index_name = index_name
         self.embedding_dim = EMBEDDING_DIM
-        self.client = OpenAI(api_key=OPENAI_API_KEY, http_client=None)
+
+        # HNSW parameters
+        self.hnsw_m = hnsw_m
+        self.hnsw_ef_construction = hnsw_ef_construction
+        self.hnsw_ef_search = hnsw_ef_search
 
         # FAISS index (HNSW for fast approximate search)
         self.index: Optional[faiss.Index] = None
@@ -52,10 +65,12 @@ class VectorStore:
 
     def _initialize_index(self):
         """Initialize a new FAISS index with HNSW."""
-        self.index = faiss.IndexHNSWFlat(self.embedding_dim, 32)
-        self.index.hnsw.efConstruction = 64
-        self.index.hnsw.efSearch = 32
-        logger.debug(f"Initialized HNSW index with M=32, efConstruction=64")
+        self.index = faiss.IndexHNSWFlat(self.embedding_dim, self.hnsw_m)
+        self.index.hnsw.efConstruction = self.hnsw_ef_construction
+        self.index.hnsw.efSearch = self.hnsw_ef_search
+        logger.info(f"Initialized HNSW index with M={self.hnsw_m}, "
+                   f"efConstruction={self.hnsw_ef_construction}, "
+                   f"efSearch={self.hnsw_ef_search}")
 
     def _generate_embeddings(self, texts: List[str]) -> np.ndarray:
         """
@@ -71,9 +86,11 @@ class VectorStore:
         embeddings = route_embedding_request(texts)
         return np.array(embeddings, dtype=np.float32)
 
-    def add_documents(self,
-                      texts: List[str],
-                      metadatas: Optional[List[Dict]] = None) -> List[int]:
+    def add_documents(
+        self,
+        texts: List[str],
+        metadatas: Optional[List[Dict]] = None
+    ) -> List[int]:
         """
         Add documents to the vector store.
 
@@ -89,6 +106,8 @@ class VectorStore:
             return []
 
         logger.info(f"Adding {len(texts)} documents to vector store")
+
+        # Generate embeddings
         embeddings = self._generate_embeddings(texts)
 
         # Add to FAISS index
@@ -104,13 +123,16 @@ class VectorStore:
 
         doc_ids = list(range(start_id, start_id + len(texts)))
         logger.info(f"Added documents with IDs: {start_id}-{start_id + len(texts) - 1}")
+        logger.info(f"Total documents in index: {len(self.documents)}")
 
         return doc_ids
 
-    def search(self,
-               query: str,
-               k: int = 5,
-               return_scores: bool = True) -> List[Dict]:
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        return_scores: bool = True
+    ) -> List[Dict]:
         """
         Search for similar documents.
 
@@ -126,28 +148,32 @@ class VectorStore:
             logger.warning("Index is empty, cannot perform search")
             return []
 
-        logger.debug(f"Searching for: '{query}' (k={k})")
+        logger.debug(f"Searching for: '{query[:50]}...' (k={k})")
 
         # Generate query embedding
         query_embedding = self._generate_embeddings([query])
 
-        # Search FAISS index
+        # Search FAISS index (returns L2 distances)
         distances, indices = self.index.search(query_embedding, k)
 
-        # Convert distances to similarity scores
+        # Convert L2 distances to similarity scores (0-1, higher is better)
+        # Using formula: similarity = 1 / (1 + distance)
         similarities = 1 / (1 + distances[0])
 
         # Build results
         results = []
         for idx, similarity in zip(indices[0], similarities):
-            if idx < len(self.documents):
-                result = {
-                    'text': self.documents[idx],
-                    'metadata': self.metadata[idx],
-                }
-                if return_scores:
-                    result['score'] = float(similarity)
-                results.append(result)
+            # Skip invalid indices
+            if idx == -1 or idx >= len(self.documents):
+                continue
+
+            result = {
+                'text': self.documents[idx],
+                'metadata': self.metadata[idx],
+            }
+            if return_scores:
+                result['score'] = float(similarity)
+            results.append(result)
 
         logger.info(f"Found {len(results)} results")
         return results
@@ -158,8 +184,13 @@ class VectorStore:
             logger.warning("No index to save")
             return
 
+        # Create directory if needed
+        os.makedirs(VECTORDB_DIR, exist_ok=True)
+
+        # Save FAISS index
         faiss.write_index(self.index, str(self.index_path))
 
+        # Save metadata
         with open(self.metadata_path, 'wb') as f:
             pickle.dump({
                 'documents': self.documents,
@@ -175,14 +206,24 @@ class VectorStore:
             self._initialize_index()
             return
 
-        self.index = faiss.read_index(str(self.index_path))
+        try:
+            # Load FAISS index
+            self.index = faiss.read_index(str(self.index_path))
 
-        with open(self.metadata_path, 'rb') as f:
-            data = pickle.load(f)
-            self.documents = data['documents']
-            self.metadata = data['metadata']
+            # Restore HNSW search parameters (not saved in index file)
+            self.index.hnsw.efSearch = self.hnsw_ef_search
 
-        logger.info(f"Loaded index from {self.index_path} ({len(self.documents)} documents)")
+            # Load metadata
+            with open(self.metadata_path, 'rb') as f:
+                data = pickle.load(f)
+                self.documents = data['documents']
+                self.metadata = data['metadata']
+
+            logger.info(f"Loaded index from {self.index_path} ({len(self.documents)} documents)")
+
+        except Exception as e:
+            logger.error(f"Failed to load index: {e}")
+            self._initialize_index()
 
     def clear(self):
         """Clear the index (remove all documents)."""
@@ -191,54 +232,123 @@ class VectorStore:
         self.metadata = []
         logger.info("Cleared index")
 
+    def delete(self):
+        """Delete the index files from disk."""
+        if self.index_path.exists():
+            os.remove(self.index_path)
+            logger.info(f"Deleted index file: {self.index_path}")
+
+        if self.metadata_path.exists():
+            os.remove(self.metadata_path)
+            logger.info(f"Deleted metadata file: {self.metadata_path}")
+
     def get_stats(self) -> Dict:
         """Get statistics about the vector store."""
+        num_docs = len(self.documents)
+        index_size_mb = 0
+
+        if self.index and self.index.ntotal > 0:
+            # Approximate size: ntotal vectors * dimension * 4 bytes (float32)
+            index_size_mb = self.index.ntotal * self.embedding_dim * 4 / (1024 * 1024)
+
         return {
             'index_name': self.index_name,
-            'num_documents': len(self.documents),
+            'num_documents': num_docs,
             'embedding_dim': self.embedding_dim,
-            'index_size_mb': self.index.ntotal * self.embedding_dim * 4 / (1024 * 1024) if self.index else 0,
-            'has_index': self.index is not None,
-            'index_path': str(self.index_path)
+            'index_size_mb': round(index_size_mb, 2),
+            'has_index': self.index is not None and self.index.ntotal > 0,
+            'index_path': str(self.index_path),
+            'hnsw_params': {
+                'M': self.hnsw_m,
+                'efConstruction': self.hnsw_ef_construction,
+                'efSearch': self.hnsw_ef_search
+            }
         }
 
 
 def test_vector_store():
     """Test the vector store with sample documents."""
-    logger.info("Starting vector store test")
+    print("\n" + "="*70)
+    print("TESTING VECTOR STORE")
+    print("="*70 + "\n")
 
     vs = VectorStore(index_name="test")
     vs.clear()
 
+    print("📝 Adding test documents...\n")
+
     documents = [
-        "FAISS is a library for efficient similarity search",
-        "Vector databases store embeddings for semantic search",
-        "HNSW is an algorithm for approximate nearest neighbor search",
-        "Recommendation systems use collaborative filtering",
-        "Neural networks learn patterns from data",
+        "FAISS is a library for efficient similarity search and clustering of dense vectors.",
+        "Vector databases store embeddings for semantic search and retrieval.",
+        "HNSW is a graph-based algorithm for approximate nearest neighbor search.",
+        "Collaborative filtering is a recommendation technique that analyzes user behavior patterns.",
+        "Neural networks learn hierarchical patterns and representations from data.",
     ]
 
-    logger.info("Adding test documents")
-    vs.add_documents(documents)
+    metadatas = [
+        {"topic": "vector_search", "source": "faiss_docs"},
+        {"topic": "vector_search", "source": "db_guide"},
+        {"topic": "algorithms", "source": "hnsw_paper"},
+        {"topic": "recommendations", "source": "recsys_book"},
+        {"topic": "machine_learning", "source": "ml_textbook"}
+    ]
 
-    query = "How do vector databases work?"
-    logger.info(f"Searching for: {query}")
-    results = vs.search(query, k=3)
+    doc_ids = vs.add_documents(documents, metadatas)
+    print(f"✅ Added {len(doc_ids)} documents (IDs: {doc_ids[0]}-{doc_ids[-1]})\n")
 
-    print(f"\nQuery: {query}")
-    print("\nTop 3 Results:")
-    for i, result in enumerate(results, 1):
-        print(f"\n{i}. Score: {result['score']:.3f}")
-        print(f"   Text: {result['text']}")
+    # Test searches
+    print("="*70)
+    print("TEST SEARCHES")
+    print("="*70 + "\n")
+
+    test_queries = [
+        "How do vector databases work?",
+        "What is collaborative filtering?",
+        "Tell me about HNSW algorithm"
+    ]
+
+    for i, query in enumerate(test_queries, 1):
+        print(f"Query {i}: {query}")
+        print("-" * 70)
+
+        results = vs.search(query, k=3)
+
+        for j, result in enumerate(results, 1):
+            print(f"\n  Result {j}:")
+            print(f"  └─ Score: {result['score']:.4f}")
+            print(f"  └─ Topic: {result['metadata'].get('topic', 'N/A')}")
+            print(f"  └─ Text: {result['text'][:80]}...")
+        print()
+
+    # Save and test persistence
+    print("="*70)
+    print("TESTING PERSISTENCE")
+    print("="*70 + "\n")
 
     vs.save()
+    print("✅ Saved index to disk\n")
 
-    stats = vs.get_stats()
-    print("\nIndex stats:")
+    # Create new instance (should load saved index)
+    vs2 = VectorStore(index_name="test")
+    stats = vs2.get_stats()
+
+    print("📊 Loaded Index Stats:")
     for key, value in stats.items():
-        print(f"   {key}: {value}")
+        if key == 'hnsw_params':
+            print(f"   {key}:")
+            for param, val in value.items():
+                print(f"      {param}: {val}")
+        else:
+            print(f"   {key}: {value}")
 
-    logger.info("Vector store test complete")
+    # Test search on loaded index
+    print(f"\n🔍 Test search on loaded index...")
+    results = vs2.search("vector search", k=2)
+    print(f"✅ Search successful! Found {len(results)} results")
+
+    print("\n" + "="*70)
+    print("Vector Store test complete!")
+    print("="*70 + "\n")
 
 
 if __name__ == "__main__":
